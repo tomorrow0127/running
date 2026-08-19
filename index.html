@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ランニングログ</title>
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+JP:wght@400;500;700&display=swap');
 
@@ -286,34 +288,56 @@ function formatDate(d){
 // ここにLINE Developersで発行されたLIFF IDを入れる
 const LIFF_ID = '2011161733-H7ZGrXc5';
 
+// ここにFirebaseコンソールの「マイアプリ」で取得したfirebaseConfigを貼る
+const firebaseConfig = {
+  apiKey: 'AIzaSyDOcDL_9aFbPHg5_X7ij5ZmqDKmRIo-ljs',
+  authDomain: 'kyuhoji-running.firebaseapp.com',
+  databaseURL: 'https://kyuhoji-running-default-rtdb.asia-southeast1.firebasedatabase.app',
+  projectId: 'kyuhoji-running',
+  storageBucket: 'kyuhoji-running.firebasestorage.app',
+  messagingSenderId: '710383054199',
+  appId: '1:710383054199:web:bf8f77e39ee2b94a8fc572'
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+let userId = null;
+let userRef = null;
+
 async function initLiff(){
   try{
     await liff.init({ liffId: LIFF_ID });
     if(!liff.isLoggedIn() && !liff.isInClient()){
-      // LINEアプリ外(通常ブラウザ)からのアクセス時のみログインへ誘導
       liff.login();
+      return;
     }
+    const profile = await liff.getProfile();
+    userId = profile.userId;
+    userRef = db.ref('runs/' + userId);
   }catch(e){
     console.error('LIFF init failed', e);
   }
 }
 
 function load(){
-  try{
-    const raw = localStorage.getItem(STORAGE_KEY);
-    runs = raw ? JSON.parse(raw) : [];
-  }catch(e){
+  if(!userRef){
+    // LIFF未初期化(通常ブラウザでの確認時など)はローカル空表示のみ
     runs = [];
+    render();
+    return;
   }
-  render();
+  userRef.on('value', (snapshot)=>{
+    const data = snapshot.val();
+    runs = data ? Object.values(data) : [];
+    render();
+  });
 }
 
 function save(){
-  try{
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(runs));
-  }catch(e){
-    console.error('save failed', e);
-  }
+  if(!userRef) return;
+  const obj = {};
+  runs.forEach(r => { obj[r.id] = r; });
+  userRef.set(obj);
 }
 
 function render(){
@@ -463,8 +487,10 @@ document.getElementById('runForm').addEventListener('submit', (e)=>{
   e.target.reset();
 });
 
-initLiff();
-load();
+(async ()=>{
+  await initLiff();
+  load();
+})();
 </script>
 </body>
 </html>
